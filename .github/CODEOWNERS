@@ -1,0 +1,13 @@
+# These owners will be the default reviewers for pull requests.
+
+# Default fallbacks
+*       @rtripathi
+
+# Infrastructure modules and deployments
+/modules/                     @rtripathi
+/.github/workflows/           @rtripathi
+/rahulsite/                   @rtripathi
+/foldermanager/               @rtripathi
+/creatorvault/                @rtripathi
+/stocksite/                   @rtripathi
+/kidsapp/                     @rtripathi

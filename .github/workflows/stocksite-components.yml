@@ -1,0 +1,183 @@
+name: 'Stock Site — Component-by-Component Deploy'
+
+on:
+  push:
+    branches: [main]
+    paths: ['stocksite/**']
+  pull_request:
+    branches: [main]
+    paths: ['stocksite/**']
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'Single component (empty = all)'
+        required: false
+        type: choice
+        options: ['','vpc','secret-manager','firestore','bigquery','pubsub','vertex-ai','cloud-run-backend','cloud-run-frontend']
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  TF_VERSION: '1.9.0'
+
+jobs:
+  vpc:
+    name: '1️⃣ VPC + Connector'
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./stocksite/vpc } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with: { workload_identity_provider: '${{ secrets.GCP_WIF_PROVIDER }}', service_account: '${{ secrets.GCP_SA_EMAIL }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
+
+  secret-manager:
+    name: '2️⃣ Secret Manager'
+    needs: [vpc]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./stocksite/secret-manager } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with: { workload_identity_provider: '${{ secrets.GCP_WIF_PROVIDER }}', service_account: '${{ secrets.GCP_SA_EMAIL }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
+
+  firestore:
+    name: '3️⃣ Firestore'
+    needs: [vpc]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./stocksite/firestore } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with: { workload_identity_provider: '${{ secrets.GCP_WIF_PROVIDER }}', service_account: '${{ secrets.GCP_SA_EMAIL }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
+
+  bigquery:
+    name: '4️⃣ BigQuery'
+    needs: [vpc]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./stocksite/bigquery } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with: { workload_identity_provider: '${{ secrets.GCP_WIF_PROVIDER }}', service_account: '${{ secrets.GCP_SA_EMAIL }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
+
+  pubsub:
+    name: '5️⃣ Pub/Sub Topics'
+    needs: [vpc]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./stocksite/pubsub } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with: { workload_identity_provider: '${{ secrets.GCP_WIF_PROVIDER }}', service_account: '${{ secrets.GCP_SA_EMAIL }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
+
+  vertex-ai:
+    name: '6️⃣ Vertex AI'
+    needs: [vpc]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./stocksite/vertex-ai } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with: { workload_identity_provider: '${{ secrets.GCP_WIF_PROVIDER }}', service_account: '${{ secrets.GCP_SA_EMAIL }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
+
+  cloud-run-backend:
+    name: '7️⃣ Cloud Run — Backend'
+    needs: [secret-manager, firestore, bigquery, pubsub]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./stocksite/cloud-run-backend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with: { workload_identity_provider: '${{ secrets.GCP_WIF_PROVIDER }}', service_account: '${{ secrets.GCP_SA_EMAIL }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
+
+  cloud-run-frontend:
+    name: '8️⃣ Cloud Run — Frontend'
+    needs: [cloud-run-backend]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./stocksite/cloud-run-frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with: { workload_identity_provider: '${{ secrets.GCP_WIF_PROVIDER }}', service_account: '${{ secrets.GCP_SA_EMAIL }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan

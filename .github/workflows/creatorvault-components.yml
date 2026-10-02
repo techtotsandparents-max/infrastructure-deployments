@@ -1,0 +1,204 @@
+name: 'Creator Vault — Component-by-Component Deploy'
+
+on:
+  push:
+    branches: [main]
+    paths: ['creatorvault/**']
+  pull_request:
+    branches: [main]
+    paths: ['creatorvault/**']
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'Single component (leave empty for all)'
+        required: false
+        type: choice
+        options: ['','vpc','cognito','s3','dynamodb','ecs-fargate','step-functions','lambda','api-gateway','cloudfront']
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  TF_VERSION: '1.9.0'
+  AWS_REGION: 'us-east-1'
+
+jobs:
+  vpc:
+    name: '1️⃣ VPC'
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./creatorvault/vpc } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: { role-to-assume: '${{ secrets.AWS_ROLE_ARN }}', aws-region: '${{ env.AWS_REGION }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
+
+  cognito:
+    name: '2️⃣ Cognito'
+    needs: [vpc]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./creatorvault/cognito } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: { role-to-assume: '${{ secrets.AWS_ROLE_ARN }}', aws-region: '${{ env.AWS_REGION }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
+
+  s3:
+    name: '3️⃣ S3 Buckets'
+    needs: [vpc]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./creatorvault/s3 } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: { role-to-assume: '${{ secrets.AWS_ROLE_ARN }}', aws-region: '${{ env.AWS_REGION }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
+
+  dynamodb:
+    name: '4️⃣ DynamoDB'
+    needs: [vpc]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./creatorvault/dynamodb } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: { role-to-assume: '${{ secrets.AWS_ROLE_ARN }}', aws-region: '${{ env.AWS_REGION }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
+
+  ecs-fargate:
+    name: '5️⃣ ECS Fargate'
+    needs: [s3]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./creatorvault/ecs-fargate } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: { role-to-assume: '${{ secrets.AWS_ROLE_ARN }}', aws-region: '${{ env.AWS_REGION }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
+
+  step-functions:
+    name: '6️⃣ Step Functions'
+    needs: [ecs-fargate, dynamodb, s3]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./creatorvault/step-functions } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: { role-to-assume: '${{ secrets.AWS_ROLE_ARN }}', aws-region: '${{ env.AWS_REGION }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
+
+  lambda:
+    name: '7️⃣ Lambda Functions'
+    needs: [step-functions, cognito]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./creatorvault/lambda } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: { role-to-assume: '${{ secrets.AWS_ROLE_ARN }}', aws-region: '${{ env.AWS_REGION }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
+
+  api-gateway:
+    name: '8️⃣ API Gateway'
+    needs: [lambda]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./creatorvault/api-gateway } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: { role-to-assume: '${{ secrets.AWS_ROLE_ARN }}', aws-region: '${{ env.AWS_REGION }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
+
+  cloudfront:
+    name: '9️⃣ CloudFront CDN'
+    needs: [api-gateway, s3]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./creatorvault/cloudfront } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: { role-to-assume: '${{ secrets.AWS_ROLE_ARN }}', aws-region: '${{ env.AWS_REGION }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan

@@ -1,0 +1,13 @@
+variable "project"              { type = string; default = "creatorvault" }
+variable "env"                  { type = string; default = "prod" }
+variable "aws_region"           { type = string; default = "us-east-1" }
+variable "submit_lambda_arn"    { type = string; default = "" }
+variable "chat_lambda_arn"      { type = string; default = "" }
+variable "status_lambda_arn"    { type = string; default = "" }
+variable "ecs_cluster_arn"      { type = string; default = "" }
+variable "ecs_task_def_arn"     { type = string; default = "" }
+variable "dynamodb_table_arn"   { type = string; default = "" }
+variable "dynamodb_table_name"  { type = string; default = "creatorvault-prod-data" }
+variable "media_bucket_arn"     { type = string; default = "" }
+variable "media_bucket_name"    { type = string; default = "creatorvault-prod-media" }
+variable "tags"                 { type = map(string); default = {} }

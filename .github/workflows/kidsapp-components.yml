@@ -1,0 +1,123 @@
+name: 'Kids App — Component-by-Component Deploy'
+
+on:
+  push:
+    branches: [main]
+    paths: ['kidsapp/**']
+  pull_request:
+    branches: [main]
+    paths: ['kidsapp/**']
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'Single component (empty = all)'
+        required: false
+        type: choice
+        options: ['','firebase','firestore','secret-manager','storage','cloud-functions']
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  TF_VERSION: '1.9.0'
+
+jobs:
+  firebase:
+    name: '1️⃣ Firebase Project & Apps'
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./kidsapp/firebase } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with: { workload_identity_provider: '${{ secrets.GCP_WIF_PROVIDER }}', service_account: '${{ secrets.GCP_SA_EMAIL }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
+
+  firestore:
+    name: '2️⃣ Firestore Database'
+    needs: [firebase]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./kidsapp/firestore } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with: { workload_identity_provider: '${{ secrets.GCP_WIF_PROVIDER }}', service_account: '${{ secrets.GCP_SA_EMAIL }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
+
+  secret-manager:
+    name: '3️⃣ Secret Manager'
+    needs: [firebase]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./kidsapp/secret-manager } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with: { workload_identity_provider: '${{ secrets.GCP_WIF_PROVIDER }}', service_account: '${{ secrets.GCP_SA_EMAIL }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
+
+  storage:
+    name: '4️⃣ Cloud Storage'
+    needs: [firebase]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./kidsapp/storage } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with: { workload_identity_provider: '${{ secrets.GCP_WIF_PROVIDER }}', service_account: '${{ secrets.GCP_SA_EMAIL }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
+
+  cloud-functions:
+    name: '5️⃣ Cloud Functions'
+    needs: [firestore, secret-manager, storage]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    environment: production
+    defaults: { run: { working-directory: ./kidsapp/cloud-functions } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with: { workload_identity_provider: '${{ secrets.GCP_WIF_PROVIDER }}', service_account: '${{ secrets.GCP_SA_EMAIL }}' }
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
+      - run: terraform init && terraform validate
+      - id: plan
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
+        run: terraform apply -auto-approve tfplan
