@@ -32,6 +32,11 @@ data "azurerm_subnet" "snet_endpoints" {
   resource_group_name  = data.azurerm_resource_group.rg.name
 }
 
+
+data "http" "runner_ip" {
+  url = "https://ifconfig.me/ip"
+}
+
 resource "azurerm_storage_account" "sa" {
   name                     = var.storage_account_name
   resource_group_name      = data.azurerm_resource_group.rg.name
@@ -39,17 +44,30 @@ resource "azurerm_storage_account" "sa" {
   account_tier             = var.account_tier
   account_replication_type = var.account_replication_type
 
-  public_network_access_enabled = false
+  public_network_access_enabled = true
   allow_nested_items_to_be_public = false
+
+  network_rules {
+    default_action = "Deny"
+    ip_rules       = [data.http.runner_ip.response_body]
+    bypass         = ["AzureServices"]
+  }
 
   identity {
     type = "SystemAssigned"
   }
 }
 
+
+resource "time_sleep" "wait_for_network_rules" {
+  depends_on      = [azurerm_storage_account.sa]
+  create_duration = "30s"
+}
+
 resource "azurerm_storage_container" "uploads" {
   name                  = "uploads"
   storage_account_name  = azurerm_storage_account.sa.name
+  depends_on            = [time_sleep.wait_for_network_rules]
   container_access_type = "private"
 }
 
