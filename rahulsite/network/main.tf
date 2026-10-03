@@ -21,21 +21,21 @@ provider "azurerm" {
 
 # The Resource Group might be managed centrally. If so, we'd use a data source.
 # Using resource for this example to ensure it exists if deploying greenfield.
-resource "azurerm_resource_group" "rg" {
+data "azurerm_resource_group" "rg" {
   name     = var.resource_group_name
-  location = var.location
+
 }
 
 resource "azurerm_virtual_network" "vnet" {
   name                = var.vnet_name
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
+  location            = data.azurerm_resource_group.rg.location
+  resource_group_name = data.azurerm_resource_group.rg.name
   address_space       = var.vnet_address_space
 }
 
 resource "azurerm_subnet" "snet_integration" {
   name                 = var.subnet_integration_name
-  resource_group_name  = azurerm_resource_group.rg.name
+  resource_group_name  = data.azurerm_resource_group.rg.name
   virtual_network_name = azurerm_virtual_network.vnet.name
   address_prefixes     = var.subnet_integration_address_prefixes
 
@@ -50,7 +50,7 @@ resource "azurerm_subnet" "snet_integration" {
 
 resource "azurerm_subnet" "snet_endpoints" {
   name                 = var.subnet_endpoints_name
-  resource_group_name  = azurerm_resource_group.rg.name
+  resource_group_name  = data.azurerm_resource_group.rg.name
   virtual_network_name = azurerm_virtual_network.vnet.name
   address_prefixes     = var.subnet_endpoints_address_prefixes
   # Private endpoint network policies are disabled by default in newer azurerm versions, 
