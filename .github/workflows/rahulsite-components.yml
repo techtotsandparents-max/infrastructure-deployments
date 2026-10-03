@@ -1,19 +1,16 @@
-name: "Rahulsite \u2014 Component-by-Component Deploy"
-true:
+name: 'Rahulsite — Component-by-Component Deploy'
+
+on:
   push:
-    branches:
-      - main
-    paths:
-      - rahulsite/**
+    branches: [main]
+    paths: ['rahulsite/**']
   pull_request:
-    branches:
-      - main
-    paths:
-      - rahulsite/**
+    branches: [main]
+    paths: ['rahulsite/**']
   workflow_dispatch:
     inputs:
       component:
-        description: Deploy a single component (leave empty to deploy all)
+        description: 'Deploy a single component (leave empty to deploy all)'
         required: false
         type: choice
         options:
@@ -24,37 +21,48 @@ true:
           - cosmosdb
           - webapp
           - functionapp
+
 permissions:
   id-token: write
   contents: read
   pull-requests: write
+
 env:
-  TF_VERSION: 1.9.0
+  TF_VERSION: '1.9.0'
   ARM_USE_OIDC: true
   ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
   ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
   ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
 jobs:
   detect-changes:
-    name: Detect Changed Components
+    name: 'Detect Changed Components'
     runs-on: ubuntu-latest
     environment: production
     outputs:
       components: ${{ steps.detect.outputs.components }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
+        with: { fetch-depth: 2 }
       - id: detect
-        run: "if [ -n \"${{ github.event.inputs.component }}\" ]; then\n  echo \"\
-          components=[\\\"${{ github.event.inputs.component }}\\\"]\" >> \"$GITHUB_OUTPUT\"\
-          \nelse\n  CHANGED=$(git diff --name-only HEAD~1 HEAD -- 'rahulsite/**' |\
-          \ \\\n    sed 's|rahulsite/||' | cut -d/ -f1 | sort -u | \\\n    jq -Rnc\
-          \ '[inputs]' )\n  echo \"components=${CHANGED:-[\\\"network\\\",\\\"keyvault\\\
-          \",\\\"storageaccount\\\",\\\"cosmosdb\\\",\\\"webapp\\\",\\\"functionapp\\\
-          \"]}\" >> \"$GITHUB_OUTPUT\"\nfi\n"
+        run: |
+          if [ -n "${{ github.event.inputs.component }}" ]; then
+            echo "components=[\"${{ github.event.inputs.component }}\"]" >> "$GITHUB_OUTPUT"
+          else
+            CHANGED=$(git diff --name-only HEAD~1 HEAD -- 'rahulsite/**' | \
+              sed 's|rahulsite/||' | cut -d/ -f1 | sort -u | \
+              jq -Rnc '[inputs]' )
+            echo "components=${CHANGED:-[\"network\",\"keyvault\",\"storageaccount\",\"cosmosdb\",\"webapp\",\"functionapp\"]}" >> "$GITHUB_OUTPUT"
+          fi
+
+  # -------------------------------------------------------
+  # Deploy each component in dependency order
+  # network → keyvault → storageaccount + cosmosdb →
+  # webapp → functionapp
+  # -------------------------------------------------------
+
   bootstrap-state:
-    name: "0\uFE0F\u20E3 Bootstrap TF State"
+    name: '0️⃣ Bootstrap TF State'
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -67,30 +75,18 @@ jobs:
       - name: Ensure Terraform State Storage Exists
         uses: azure/CLI@v2
         with:
-          inlineScript: 'az group create --name rg-terraform-state --location "South
-            India"
+          inlineScript: |
+            az group create --name rg-terraform-state --location "South India"
+            az storage account create --name stterraformrahultech --resource-group rg-terraform-state --sku Standard_LRS --encryption-services blob --allow-blob-public-access false
+            az storage container create --name tfstate --account-name stterraformrahultech || true
 
-            az storage account create --name stterraformrahultech --resource-group
-            rg-terraform-state --sku Standard_LRS --encryption-services blob --allow-blob-public-access
-            false
-
-            az storage container create --name tfstate --account-name stterraformrahultech
-            || true
-
-            '
   network:
-    name: "1\uFE0F\u20E3 Network"
-    needs:
-      - detect-changes
-      - bootstrap-state
-    if: ${{ contains(fromJSON(needs.detect-changes.outputs.components), 'network')
-      || github.event.inputs.component == 'network' || github.event.inputs.component
-      == '' }}
+    name: '1️⃣ Network'
+    needs: [detect-changes, bootstrap-state]
+    if: ${{ contains(fromJSON(needs.detect-changes.outputs.components), 'network') || github.event.inputs.component == 'network' || github.event.inputs.component == '' }}
     runs-on: ubuntu-latest
     environment: production
-    defaults:
-      run:
-        working-directory: ./rahulsite/network
+    defaults: { run: { working-directory: ./rahulsite/network } }
     steps:
       - uses: actions/checkout@v4
       - uses: azure/login@v2
@@ -99,27 +95,23 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
       - run: terraform init
       - run: terraform validate
       - id: plan
         run: terraform plan -no-color -out=tfplan
         continue-on-error: true
       - name: Apply (main push only)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome
-          == 'success'
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
         run: terraform apply -auto-approve tfplan
+
   keyvault:
-    name: "2\uFE0F\u20E3 Key Vault"
-    needs:
-      - network
+    name: '2️⃣ Key Vault'
+    needs: [network]
     if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
     environment: production
-    defaults:
-      run:
-        working-directory: ./rahulsite/keyvault
+    defaults: { run: { working-directory: ./rahulsite/keyvault } }
     steps:
       - uses: actions/checkout@v4
       - uses: azure/login@v2
@@ -128,26 +120,22 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
       - run: terraform init
       - run: terraform validate
       - id: plan
         run: terraform plan -no-color -out=tfplan
         continue-on-error: true
-      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome
-          == 'success'
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
         run: terraform apply -auto-approve tfplan
+
   storageaccount:
-    name: "3\uFE0F\u20E3 Storage Account"
-    needs:
-      - keyvault
+    name: '3️⃣ Storage Account'
+    needs: [keyvault]
     if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
     environment: production
-    defaults:
-      run:
-        working-directory: ./rahulsite/storageaccount
+    defaults: { run: { working-directory: ./rahulsite/storageaccount } }
     steps:
       - uses: actions/checkout@v4
       - uses: azure/login@v2
@@ -156,26 +144,22 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
       - run: terraform init
       - run: terraform validate
       - id: plan
         run: terraform plan -no-color -out=tfplan
         continue-on-error: true
-      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome
-          == 'success'
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
         run: terraform apply -auto-approve tfplan
+
   cosmosdb:
-    name: "4\uFE0F\u20E3 Cosmos DB"
-    needs:
-      - keyvault
+    name: '4️⃣ Cosmos DB'
+    needs: [keyvault]
     if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
     environment: production
-    defaults:
-      run:
-        working-directory: ./rahulsite/cosmosdb
+    defaults: { run: { working-directory: ./rahulsite/cosmosdb } }
     steps:
       - uses: actions/checkout@v4
       - uses: azure/login@v2
@@ -184,27 +168,22 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
       - run: terraform init
       - run: terraform validate
       - id: plan
         run: terraform plan -no-color -out=tfplan
         continue-on-error: true
-      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome
-          == 'success'
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
         run: terraform apply -auto-approve tfplan
+
   webapp:
-    name: "5\uFE0F\u20E3 Web App"
-    needs:
-      - storageaccount
-      - cosmosdb
+    name: '5️⃣ Web App'
+    needs: [storageaccount, cosmosdb]
     if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
     environment: production
-    defaults:
-      run:
-        working-directory: ./rahulsite/webapp
+    defaults: { run: { working-directory: ./rahulsite/webapp } }
     steps:
       - uses: actions/checkout@v4
       - uses: azure/login@v2
@@ -213,27 +192,22 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
       - run: terraform init
       - run: terraform validate
       - id: plan
         run: terraform plan -no-color -out=tfplan
         continue-on-error: true
-      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome
-          == 'success'
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
         run: terraform apply -auto-approve tfplan
+
   functionapp:
-    name: "6\uFE0F\u20E3 Function App"
-    needs:
-      - storageaccount
-      - cosmosdb
+    name: '6️⃣ Function App'
+    needs: [storageaccount, cosmosdb]
     if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
     environment: production
-    defaults:
-      run:
-        working-directory: ./rahulsite/functionapp
+    defaults: { run: { working-directory: ./rahulsite/functionapp } }
     steps:
       - uses: actions/checkout@v4
       - uses: azure/login@v2
@@ -242,13 +216,11 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
+        with: { terraform_version: '${{ env.TF_VERSION }}' }
       - run: terraform init
       - run: terraform validate
       - id: plan
         run: terraform plan -no-color -out=tfplan
         continue-on-error: true
-      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome
-          == 'success'
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.plan.outcome == 'success'
         run: terraform apply -auto-approve tfplan
