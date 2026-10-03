@@ -6,7 +6,13 @@ terraform {
       version = "~> 3.0"
     }
   }
-  backend "azurerm" {}
+  backend "azurerm" {
+    resource_group_name  = "rg-terraform-state"
+    storage_account_name = "stterraformrahultech"
+    container_name       = "tfstate"
+    key                  = "rahulsite/storageaccount/terraform.tfstate"
+    use_oidc             = true
+  }
 }
 
 provider "azurerm" {
