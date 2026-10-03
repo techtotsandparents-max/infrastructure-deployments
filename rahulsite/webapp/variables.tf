@@ -13,6 +13,11 @@ variable "app_service_plan_name" {
   description = "The name of the shared App Service Plan"
 }
 
+variable "app_service_plan_resource_group_name" {
+  type        = string
+  description = "The name of the resource group containing the ASP"
+}
+
 variable "webapp_name" {
   type        = string
   description = "The name of the Web App"

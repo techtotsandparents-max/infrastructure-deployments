@@ -19,7 +19,7 @@ data "azurerm_resource_group" "rg" {
 
 data "azurerm_service_plan" "asp" {
   name                = var.app_service_plan_name
-  resource_group_name = data.azurerm_resource_group.rg.name
+  resource_group_name = var.app_service_plan_resource_group_name
 }
 
 data "azurerm_virtual_network" "vnet" {
